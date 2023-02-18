@@ -20,9 +20,8 @@ edge_init(Keystone::Enclave* enclave) {
   register_call(OCALL_PRINT_VALUE, print_value_wrapper);
   register_call(OCALL_COPY_REPORT, copy_report_wrapper);
   register_call(OCALL_GET_STRING, get_host_string_wrapper);
-
   edge_call_init_internals(
-      (uintptr_t)enclave->getSharedBuffer(), enclave->getSharedBufferSize());
+      (uintptr_t) enclave->getSharedBuffer(), (size_t) enclave->getSharedBufferSize());
 }
 void
 print_buffer_wrapper(void* buffer) {

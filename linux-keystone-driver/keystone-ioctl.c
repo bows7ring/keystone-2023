@@ -7,8 +7,51 @@
 #include "keystone_user.h"
 #include <asm/sbi.h>
 #include <linux/uaccess.h>
+DEFINE_MUTEX(keystone_enclave_ref_mutex);
 
 int __keystone_destroy_enclave(unsigned int ueid);
+
+int keystone_clone_enclave(struct file *filep, unsigned long arg)
+{
+  /* create parameters */
+  struct keystone_ioctl_clone_enclave *enclp = (struct keystone_ioctl_clone_enclave *) arg;
+
+  struct enclave *enclave = get_enclave_by_id(enclp->eid);
+  if (!enclave) {
+    keystone_err("invalid enclave id %d in create_enclave_snapshot\n", enclp->eid);
+    return -EINVAL;
+  }
+
+  struct enclave *snapshot_encl = get_enclave_by_id(enclp->snapshot_eid);
+  if (!snapshot_encl) {
+    keystone_err("invalid enclave id %d in create_enclave_snapshot\n", enclp->snapshot_eid);
+    return -EINVAL;
+  }
+
+  /* set the child's snapshot_ueid to parent's ueid */
+  enclave->snapshot_ueid = enclp->snapshot_eid;
+
+  /* increase the reference count of the parent */
+  mutex_lock(&keystone_enclave_ref_mutex);
+  snapshot_encl->ref_count++;
+  mutex_unlock(&keystone_enclave_ref_mutex);
+
+  /* SM SBI */
+  struct keystone_sbi_clone_create create_clone_args;
+  create_clone_args.snapshot_eid = snapshot_encl->eid;
+  create_clone_args.epm_region.paddr = enclp->epm_paddr;
+  create_clone_args.utm_region.paddr = enclp->utm_paddr;
+  create_clone_args.epm_region.size = enclp->epm_size;
+  create_clone_args.utm_region.size = enclp->utm_size;
+  create_clone_args.retval = enclp->retval;
+
+  struct sbiret ret;
+  ret = sbi_sm_clone_enclave(&create_clone_args);
+  enclave->eid = ret.value;
+  enclave->is_init = false;
+
+  return 0;
+}
 
 int keystone_create_enclave(struct file *filep, unsigned long arg)
 {
@@ -17,6 +60,7 @@ int keystone_create_enclave(struct file *filep, unsigned long arg)
 
   struct enclave *enclave;
   enclave = create_enclave(enclp->min_pages);
+  enclave->is_clone = enclp->is_clone;
 
   if (enclave == NULL) {
     return -ENOMEM;
@@ -46,7 +90,7 @@ int keystone_finalize_enclave(unsigned long arg)
 
   enclave = get_enclave_by_id(enclp->eid);
   if(!enclave) {
-    keystone_err("invalid enclave id\n");
+    keystone_err("invalid enclave id %d in finalize_enclave\n", enclp->eid);
     return -EINVAL;
   }
 
@@ -103,7 +147,7 @@ int keystone_run_enclave(unsigned long data)
   enclave = get_enclave_by_id(ueid);
 
   if (!enclave) {
-    keystone_err("invalid enclave id\n");
+    keystone_err("invalid enclave id %d in run_enclave\n", ueid);
     return -EINVAL;
   }
 
@@ -131,7 +175,7 @@ int utm_init_ioctl(struct file *filp, unsigned long arg)
   enclave = get_enclave_by_id(enclp->eid);
 
   if(!enclave) {
-    keystone_err("invalid enclave id\n");
+    keystone_err("invalid enclave id %d in utm_init\n", enclp->eid);
     return -EINVAL;
   }
 
@@ -171,9 +215,25 @@ int __keystone_destroy_enclave(unsigned int ueid)
   struct enclave *enclave;
   enclave = get_enclave_by_id(ueid);
 
+  //keystone_info("enclave %d destroy\n", ueid);
   if (!enclave) {
-    keystone_err("invalid enclave id\n");
+    keystone_err("invalid enclave id %d in destroy_enclave\n", ueid);
     return -EINVAL;
+  }
+
+  struct enclave *snapshot_encl;
+  snapshot_encl = get_enclave_by_id(enclave->snapshot_ueid);
+
+  if (snapshot_encl) {
+    /* decrease the reference count of the parent */
+    mutex_lock(&keystone_enclave_ref_mutex);
+    snapshot_encl->ref_count--;
+    mutex_unlock(&keystone_enclave_ref_mutex);
+  }
+
+  if (enclave->ref_count > 0) {
+    //keystone_info("keystone_destroy_enclave: skipping (snapshot is in use)\n");
+    return 0;
   }
 
   if (enclave->eid >= 0) {
@@ -185,7 +245,6 @@ int __keystone_destroy_enclave(unsigned int ueid)
   } else {
     keystone_warn("keystone_destroy_enclave: skipping (enclave does not exist)\n");
   }
-
 
   destroy_enclave(enclave);
   enclave_idr_remove(ueid);
@@ -203,7 +262,7 @@ int keystone_resume_enclave(unsigned long data)
 
   if (!enclave)
   {
-    keystone_err("invalid enclave id\n");
+    keystone_err("invalid enclave id %d in resume_enclave\n", ueid);
     return -EINVAL;
   }
 
@@ -251,6 +310,9 @@ long keystone_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
       break;
     case KEYSTONE_IOC_RESUME_ENCLAVE:
       ret = keystone_resume_enclave((unsigned long) data);
+      break;
+    case KEYSTONE_IOC_CLONE_ENCLAVE:
+      ret = keystone_clone_enclave(filep, (unsigned long) data);
       break;
     /* Note that following commands could have been implemented as a part of ADD_PAGE ioctl.
      * However, there was a weird bug in compiler that generates a wrong control flow

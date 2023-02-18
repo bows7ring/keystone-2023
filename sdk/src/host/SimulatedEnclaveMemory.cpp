@@ -9,7 +9,7 @@ namespace Keystone {
 void
 SimulatedEnclaveMemory::init(
     KeystoneDevice* dev, uintptr_t phys_addr, size_t min_pages) {
-  pDevice       = dev;
+  setDevice(dev);
   epmSize       = PAGE_SIZE * min_pages;
   rootPageTable = allocMem(PAGE_SIZE * min_pages);
   startAddr     = rootPageTable;
@@ -32,10 +32,9 @@ SimulatedEnclaveMemory::allocMem(size_t size) {
 
 uintptr_t
 SimulatedEnclaveMemory::allocUtm(size_t size) {
-  utmFreeList   = allocMem(size);
+  utmPhysAddr   = allocMem(size);
   untrustedSize = size;
-  utmPhysAddr   = utmFreeList;
-  return utmFreeList;
+  return utmPhysAddr;
 }
 
 uintptr_t

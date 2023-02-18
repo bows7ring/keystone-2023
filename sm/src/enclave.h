@@ -17,6 +17,8 @@
 // Special target platform header, set by configure script
 #include TARGET_PLATFORM_HEADER
 
+#define NO_PARENT -1
+
 #define ATTEST_DATA_MAXLEN  1024
 #define ENCLAVE_REGIONS_MAX 8
 /* TODO: does not support multithreaded enclave yet */
@@ -27,6 +29,7 @@ typedef enum {
   DESTROYING = 0,
   ALLOCATED,
   FRESH,
+  SNAPSHOT,
   STOPPED,
   RUNNING,
 } enclave_state;
@@ -34,7 +37,7 @@ typedef enum {
 /* Enclave stop reasons requested */
 #define STOP_TIMER_INTERRUPT  0
 #define STOP_EDGE_CALL_HOST   1
-#define STOP_EXIT_ENCLAVE     2
+#define STOP_CLONE            2
 
 /* For now, eid's are a simple unsigned int */
 typedef unsigned int enclave_id;
@@ -44,12 +47,14 @@ typedef unsigned int enclave_id;
  * UTM is the untrusted shared pages
  * OTHER is managed by some other component (e.g. platform_)
  * INVALID is an unused index
+ * SNAPSHOT means the region is read-only
  */
 enum enclave_region_type{
   REGION_INVALID,
   REGION_EPM,
   REGION_UTM,
   REGION_OTHER,
+  REGION_SNAPSHOT,
 };
 
 struct enclave_region
@@ -82,6 +87,11 @@ struct enclave
   struct thread_state threads[MAX_ENCL_THREADS];
 
   struct platform_enclave_data ped;
+
+  /* parameters added for serverless TEE research */
+  enclave_id snapshot_eid; // snapshot enclave eid
+  size_t ref_count; // 0 if not a snapshot or has no reference
+  uintptr_t free_list;
 };
 
 /* attestation reports */
@@ -119,17 +129,21 @@ unsigned long create_enclave(unsigned long *eid, struct keystone_sbi_create crea
 unsigned long destroy_enclave(enclave_id eid);
 unsigned long run_enclave(struct sbi_trap_regs *regs, enclave_id eid);
 unsigned long resume_enclave(struct sbi_trap_regs *regs, enclave_id eid);
+unsigned long clone_enclave(unsigned long *eidptr, struct keystone_sbi_clone_create create_args);
 // callables from the enclave
 unsigned long exit_enclave(struct sbi_trap_regs *regs, enclave_id eid);
 unsigned long stop_enclave(struct sbi_trap_regs *regs, uint64_t request, enclave_id eid);
 unsigned long attest_enclave(uintptr_t report, uintptr_t data, uintptr_t size, enclave_id eid);
+unsigned long create_snapshot(struct sbi_trap_regs *regs, enclave_id eid, uintptr_t boot_pc);
 /* attestation and virtual mapping validation */
 unsigned long validate_and_hash_enclave(struct enclave* enclave);
 // TODO: These functions are supposed to be internal functions.
 void enclave_init_metadata();
 unsigned long copy_enclave_create_args(uintptr_t src, struct keystone_sbi_create* dest);
+unsigned long copy_enclave_clone_args(uintptr_t src, struct keystone_sbi_clone_create *dest);
 int get_enclave_region_index(enclave_id eid, enum enclave_region_type type);
 uintptr_t get_enclave_region_base(enclave_id eid, int memid);
 uintptr_t get_enclave_region_size(enclave_id eid, int memid);
 unsigned long get_sealing_key(uintptr_t seal_key, uintptr_t key_ident, size_t key_ident_size, enclave_id eid);
+unsigned long handle_copy_write(uintptr_t fault_addr);
 #endif

@@ -32,19 +32,24 @@ class KeystoneDevice {
 
  public:
   virtual uintptr_t getPhysAddr() { return physAddr; }
+  virtual int getEID() {return eid; }
+
 
   KeystoneDevice();
   virtual ~KeystoneDevice() {}
-  virtual bool initDevice(Params params);
-  virtual Error create(uint64_t minPages);
+  virtual bool initDevice();
+  virtual Error create(uint64_t minPages, uintptr_t is_clone);
   virtual uintptr_t initUTM(size_t size);
   virtual Error finalize(
       uintptr_t runtimePhysAddr, uintptr_t eappPhysAddr, uintptr_t freePhysAddr,
       struct runtime_params_t params);
   virtual Error destroy();
+  virtual Error destroySnapshot(uintptr_t snapshot_eid);
   virtual Error run(uintptr_t* ret);
   virtual Error resume(uintptr_t* ret);
   virtual void* map(uintptr_t addr, size_t size);
+  virtual Error clone_enclave(
+      struct keystone_ioctl_clone_enclave encl);
 };
 
 class MockKeystoneDevice : public KeystoneDevice {
@@ -55,7 +60,7 @@ class MockKeystoneDevice : public KeystoneDevice {
  public:
   MockKeystoneDevice() {}
   ~MockKeystoneDevice();
-  bool initDevice(Params params);
+  bool initDevice();
   Error create(uint64_t minPages);
   uintptr_t initUTM(size_t size);
   Error finalize(

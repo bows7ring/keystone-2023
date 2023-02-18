@@ -9,6 +9,7 @@
 #include "cpu.h"
 #include "platform-hook.h"
 #include "plugins/plugins.h"
+#include "debug.h"
 #include <sbi/riscv_asm.h>
 #include <sbi/sbi_console.h>
 
@@ -23,13 +24,49 @@ unsigned long sbi_sm_create_enclave(unsigned long* eid, uintptr_t create_args)
     return ret;
 
   ret = create_enclave(eid, create_args_local);
+
+  DEBUG("create_enclave, eid = %lu, ret = %lu", *eid, ret);
   return ret;
 }
+
+unsigned long
+sbi_clone(unsigned long* eid, uintptr_t create_args){
+  unsigned long ret;
+  struct keystone_sbi_clone_create create_args_local;
+
+  ret = copy_enclave_clone_args(create_args, &create_args_local);
+
+  if (ret)
+    return ret;
+
+  ret = clone_enclave (eid, create_args_local);
+
+  DEBUG("clone_enclave, eid = %lu, ret = %lu", *eid, ret);
+
+  return ret;
+}
+
+unsigned long
+sbi_snapshot(struct sbi_trap_regs *regs, uintptr_t boot_pc)
+{
+  unsigned long ret;
+
+  //Returns snapshot handle
+  ret = create_snapshot(regs, cpu_get_enclave_id(), boot_pc);
+
+  DEBUG("create_snapshot, eid = %d, ret = %lu", cpu_get_enclave_id(), ret);
+
+  return ret;
+}
+
 
 unsigned long sbi_sm_destroy_enclave(unsigned long eid)
 {
   unsigned long ret;
   ret = destroy_enclave((unsigned int)eid);
+
+  DEBUG("destroy_enclave, eid = %lu, ret = %lu", eid, ret);
+
   return ret;
 }
 
@@ -37,6 +74,9 @@ unsigned long sbi_sm_run_enclave(struct sbi_trap_regs *regs, unsigned long eid)
 {
   regs->a0 = run_enclave(regs, (unsigned int) eid);
   regs->mepc += 4;
+
+  DEBUG("run_enclave, eid = %lu, ret = %lu", eid, regs->a0);
+
   sbi_trap_exit(regs);
   return 0;
 }
@@ -49,6 +89,10 @@ unsigned long sbi_sm_resume_enclave(struct sbi_trap_regs *regs, unsigned long ei
     regs->a0 = ret;
   regs->mepc += 4;
 
+#if DEBUG_CTX_SWITCH
+  DEBUG("resume_enclave, eid = %lu, ret = %lu, pc = 0x%lx", eid, ret, regs->mepc);
+#endif
+
   sbi_trap_exit(regs);
   return 0;
 }
@@ -58,6 +102,9 @@ unsigned long sbi_sm_exit_enclave(struct sbi_trap_regs *regs, unsigned long retv
   regs->a0 = exit_enclave(regs, cpu_get_enclave_id());
   regs->a1 = retval;
   regs->mepc += 4;
+
+  DEBUG("exit_enclave, eid = %d, ret = %lu, retval = %lu", cpu_get_enclave_id(), regs->a0, regs->a1);
+
   sbi_trap_exit(regs);
   return 0;
 }
@@ -66,6 +113,11 @@ unsigned long sbi_sm_stop_enclave(struct sbi_trap_regs *regs, unsigned long requ
 {
   regs->a0 = stop_enclave(regs, request, cpu_get_enclave_id());
   regs->mepc += 4;
+
+#if DEBUG_CTX_SWITCH
+  DEBUG("stop_enclave, eid = %d, ret = %lu, request = %lu, pc = 0x%lx", cpu_get_enclave_id(), regs->a0, request, regs->mepc);
+#endif
+
   sbi_trap_exit(regs);
   return 0;
 }
