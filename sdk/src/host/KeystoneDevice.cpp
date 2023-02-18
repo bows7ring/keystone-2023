@@ -10,12 +10,13 @@ namespace Keystone {
 KeystoneDevice::KeystoneDevice() { eid = -1; }
 
 Error
-KeystoneDevice::create(uint64_t minPages) {
+KeystoneDevice::create(uint64_t minPages, uintptr_t is_clone) {
   struct keystone_ioctl_create_enclave encl;
   encl.min_pages = minPages;
+  encl.is_clone  = is_clone;
 
   if (ioctl(fd, KEYSTONE_IOC_CREATE_ENCLAVE, &encl)) {
-    perror("ioctl error");
+    perror("[create] ioctl error");
     eid = -1;
     return Error::IoctlErrorCreate;
   }
@@ -50,7 +51,18 @@ KeystoneDevice::finalize(
   encl.params        = params;
 
   if (ioctl(fd, KEYSTONE_IOC_FINALIZE_ENCLAVE, &encl)) {
-    perror("ioctl error");
+    perror("[finalize] ioctl error");
+    return Error::IoctlErrorFinalize;
+  }
+  return Error::Success;
+}
+
+Error
+KeystoneDevice::clone_enclave(
+    struct keystone_ioctl_clone_enclave encl) {
+  encl.eid = eid;
+  if (ioctl(fd, KEYSTONE_IOC_CLONE_ENCLAVE, &encl)) {
+    perror("[clone] ioctl error");
     return Error::IoctlErrorFinalize;
   }
   return Error::Success;
@@ -67,7 +79,25 @@ KeystoneDevice::destroy() {
   }
 
   if (ioctl(fd, KEYSTONE_IOC_DESTROY_ENCLAVE, &encl)) {
-    perror("ioctl error");
+    perror("[destroy] ioctl error");
+    return Error::IoctlErrorDestroy;
+  }
+
+  return Error::Success;
+}
+
+Error
+KeystoneDevice::destroySnapshot(uintptr_t snapshot_eid) {
+  struct keystone_ioctl_create_enclave encl;
+  encl.eid = snapshot_eid;
+
+  /* if the snapshot has never created */
+  if (eid < 0) {
+    return Error::Success;
+  }
+
+  if (ioctl(fd, KEYSTONE_IOC_DESTROY_ENCLAVE, &encl)) {
+    perror("[destorySnapshot] ioctl error");
     return Error::IoctlErrorDestroy;
   }
 
@@ -99,6 +129,13 @@ KeystoneDevice::__run(bool resume, uintptr_t* ret) {
       return Error::EdgeCallHost;
     case KEYSTONE_ENCLAVE_INTERRUPTED:
       return Error::EnclaveInterrupted;
+    case KEYSTONE_ENCLAVE_CLONE:
+      return Error::EnclaveCloneRequested;
+    case SBI_ERR_SM_ENCLAVE_SNAPSHOT:
+      if (ret) {
+        *ret = encl.value;
+      }
+      return Error::EnclaveSnapshot;
     case KEYSTONE_ENCLAVE_DONE:
       if (ret) {
         *ret = encl.value;
@@ -132,7 +169,7 @@ KeystoneDevice::map(uintptr_t addr, size_t size) {
 }
 
 bool
-KeystoneDevice::initDevice(Params params) {
+KeystoneDevice::initDevice() {
   /* open device driver */
   fd = open(KEYSTONE_DEV_PATH, O_RDWR);
   if (fd < 0) {
@@ -176,7 +213,7 @@ MockKeystoneDevice::resume(uintptr_t* ret) {
 }
 
 bool
-MockKeystoneDevice::initDevice(Params params) {
+MockKeystoneDevice::initDevice() {
   return true;
 }
 

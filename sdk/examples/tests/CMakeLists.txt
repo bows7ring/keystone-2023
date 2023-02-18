@@ -1,10 +1,9 @@
-set(host_bin test-runner)
-set(host_src test-runner.cpp edge_wrapper.cpp)
+set(host_bins test-runner test-runner-multiple)
 
 if(RISCV32)
-   set(eyrie_plugins "freemem rv32")
+   set(eyrie_plugins "freemem rv32 debug strace_debug")
 else()
-   set(eyrie_plugins "freemem")
+   set(eyrie_plugins "freemem linux_syscall")
 endif()
 
 set(package_name "tests.ke")
@@ -15,15 +14,18 @@ set(package_script "./run-test.sh")
 ###############################################
 # to add a test, (1) add the test to the following variable
 set(all_test_bins
-  stack
-  loop
-  malloc
-  long-nop
-  fibonacci
-  fib-bench
-  attestation
-  untrusted
-  data-sealing)
+   fork
+   snapshot
+   stack
+   loop
+   malloc
+   long-nop
+   fibonacci
+   fib-bench
+   attestation
+   untrusted
+   data-sealing
+  )
 
 # and (2) define the recipe of the test below:
 
@@ -62,7 +64,7 @@ target_link_libraries(fib-bench ${KEYSTONE_LIB_EAPP})
 add_executable(attestation attestation/attestation.c attestation/edge_wrapper.c)
 target_link_libraries(attestation ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
 
-# untrusted
+#untrusted
 add_executable(untrusted untrusted/untrusted.c untrusted/edge_wrapper.c)
 target_link_libraries(untrusted ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
 
@@ -70,19 +72,27 @@ target_link_libraries(untrusted ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
 add_executable(data-sealing data-sealing/data-sealing.c)
 target_link_libraries(data-sealing ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
 
+# snapshot
+add_executable(snapshot snapshot/snapshot.c snapshot/edge_wrapper.c)
+target_link_libraries(snapshot ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
+
+# fork
+add_executable(fork fork/fork.c fork/edge_wrapper.c)
+target_link_libraries(fork ${KEYSTONE_LIB_EAPP} ${KEYSTONE_LIB_EDGE})
+
 ###############################################
 # a script for running all test enclaves
 set(test_script_tmp ${CMAKE_CURRENT_BINARY_DIR}/tmp/run-test.sh)
 set(test_script ${CMAKE_CURRENT_BINARY_DIR}/run-test.sh)
 
 file(WRITE ${test_script_tmp} "")
-foreach (test IN ITEMS ${all_test_bins})
+foreach (test IN ITEMS snapshot)
   file(APPEND ${test_script_tmp} "echo 'testing ${test}'\n")
   if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${test}/retval)
     execute_process(COMMAND cat ${CMAKE_CURRENT_SOURCE_DIR}/${test}/retval OUTPUT_VARIABLE retval)
-    file(APPEND ${test_script_tmp} "./${host_bin} ${test} eyrie-rt --retval ${retval}")
+    file(APPEND ${test_script_tmp} "./test-runner ${test} eyrie-rt --retval ${retval}")
   else()
-    file(APPEND ${test_script_tmp} "./${host_bin} ${test} eyrie-rt\n")
+    file(APPEND ${test_script_tmp} "./test-runner ${test} eyrie-rt\n")
   endif()
 endforeach(test)
 
@@ -97,14 +107,16 @@ set_target_properties(${all_test_bins}
 
 # host
 
-add_executable(${host_bin} ${host_src})
-target_link_libraries(${host_bin} ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE} ${KEYSTONE_LIB_VERIFIER})
+add_executable(test-runner test-runner.cpp edge_wrapper.cpp)
+add_executable(test-runner-multiple test-runner-multiple.cpp)
+target_link_libraries(test-runner ${KEYSTONE_LIB_HOST} ${KEYSTONE_LIB_EDGE} ${KEYSTONE_LIB_VERIFIER})
+target_link_libraries(test-runner-multiple ${KEYSTONE_LIB_HOST})
 
 # add target for Eyrie runtime (see keystone.cmake)
 
 set(eyrie_files_to_copy .options_log eyrie-rt)
 add_eyrie_runtime(test-eyrie
-  "v1.2.1"
+  "origin/dev-clone-runtime"
   ${eyrie_plugins}
   ${eyrie_files_to_copy})
 
@@ -113,7 +125,7 @@ add_eyrie_runtime(test-eyrie
 add_keystone_package(test-package
   ${package_name}
   ${package_script}
-  ${test_script} ${eyrie_files_to_copy} ${all_test_bins} ${host_bin}
+  ${test_script} ${eyrie_files_to_copy} ${all_test_bins} ${host_bins}
   )
 
 add_dependencies(test-package test-eyrie)

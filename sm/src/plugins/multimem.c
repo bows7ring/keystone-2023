@@ -1,34 +1,26 @@
 #include "plugins/multimem.h"
 #include "sm.h"
-#include <sbi/sbi_console.h>
-#include "mprv.h"
 
-uintptr_t multimem_get_other_region_size(enclave_id eid, size_t *size_out)
+uintptr_t multimem_get_other_region_size(enclave_id eid)
 {
   int mem_id = get_enclave_region_index(eid, REGION_OTHER);
-  if (mem_id == -1)
-    return -1;
-  size_t out = get_enclave_region_size(eid, mem_id);
-  return copy_word_from_sm((uintptr_t)size_out, &out);
+  return get_enclave_region_size(eid, mem_id);
 }
 
-uintptr_t multimem_get_other_region_addr(enclave_id eid, size_t *size_out)
+uintptr_t multimem_get_other_region_addr(enclave_id eid)
 {
   int mem_id = get_enclave_region_index(eid, REGION_OTHER);
-  if (mem_id == -1)
-    return -1;
-  size_t out = get_enclave_region_base(eid, mem_id);
-  return copy_word_from_sm((uintptr_t)size_out, &out);
+  return get_enclave_region_base(eid, mem_id);
 }
 
-uintptr_t do_sbi_multimem(enclave_id eid, uintptr_t call_id, uintptr_t arg0)
+uintptr_t do_sbi_multimem(enclave_id eid, uintptr_t call_id)
 {
   switch(call_id)
   {
     case MULTIMEM_GET_OTHER_REGION_SIZE:
-      return multimem_get_other_region_size(eid, (size_t *)arg0);
+      return multimem_get_other_region_size(eid);
     case MULTIMEM_GET_OTHER_REGION_ADDR:
-      return multimem_get_other_region_addr(eid, (size_t *)arg0);
+      return multimem_get_other_region_addr(eid);
     default:
       return 0;
   }

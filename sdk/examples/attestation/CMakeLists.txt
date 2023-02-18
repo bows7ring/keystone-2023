@@ -3,7 +3,7 @@ set(eapp_src eapp/attestor.c)
 set(host_bin attestor-runner)
 set(host_src host/attestor-runner.cpp host/host.cpp host/verifier.cpp)
 set(package_name "attestor.ke")
-set(package_script "./attestor-runner attestor eyrie-rt --sm-bin fw_jump.bin")
+set(package_script "./attestor-runner attestor eyrie-rt --sm-bin fw_payload.bin")
 
 if(RISCV32)
   set(eyrie_plugins "freemem rv32")
@@ -37,7 +37,7 @@ target_include_directories(${host_bin}
 
 set(eyrie_files_to_copy .options_log eyrie-rt)
 add_eyrie_runtime(${eapp_bin}-eyrie
-  "v1.2.1"
+  "v1.0.0"
   ${eyrie_plugins}
   ${eyrie_files_to_copy})
 

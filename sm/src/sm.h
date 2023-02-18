@@ -20,6 +20,7 @@
 #define SBI_SM_DESTROY_ENCLAVE    2002
 #define SBI_SM_RUN_ENCLAVE        2003
 #define SBI_SM_RESUME_ENCLAVE     2005
+#define SBI_SM_CLONE_ENCLAVE      2006
 #define FID_RANGE_HOST            2999
 /* 3000-3999 are called by enclave */
 #define SBI_SM_RANDOM             3001
@@ -27,6 +28,7 @@
 #define SBI_SM_GET_SEALING_KEY    3003
 #define SBI_SM_STOP_ENCLAVE       3004
 #define SBI_SM_EXIT_ENCLAVE       3006
+#define SBI_SM_SNAPSHOT           3007
 #define FID_RANGE_ENCLAVE         3999
 /* 4000-4999 are experimental */
 #define SBI_SM_CALL_PLUGIN        4000
@@ -51,6 +53,8 @@
 #define SBI_ERR_SM_ENCLAVE_SBI_PROHIBITED              100014
 #define SBI_ERR_SM_ENCLAVE_ILLEGAL_PTE                 100015
 #define SBI_ERR_SM_ENCLAVE_NOT_FRESH                   100016
+#define SBI_ERR_SM_ENCLAVE_SNAPSHOT                    100017
+#define SBI_ERR_SM_ENCLAVE_CLONE                       100018
 #define SBI_ERR_SM_DEPRECATED                          100099
 #define SBI_ERR_SM_NOT_IMPLEMENTED                     100100
 
@@ -96,6 +100,23 @@ struct runtime_pa_params
   uintptr_t user_base;
   uintptr_t free_base;
 };
+
+struct keystone_sbi_clone_create
+{
+  struct keystone_sbi_pregion epm_region;
+  struct keystone_sbi_pregion utm_region;
+  unsigned long snapshot_eid;
+  unsigned int* eid_pptr;
+  unsigned long retval;
+};
+
+struct sbi_snapshot_ret {
+    uintptr_t utm_paddr;
+    uintptr_t utm_size;
+    uintptr_t dram_base;
+    uintptr_t dram_size;
+};
+
 
 struct keystone_sbi_create
 {
